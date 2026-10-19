@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Makale Takip</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --col: #ebedf0;
+    --text: #1f2328;
+    --muted: #656d76;
+    --border: #d0d7de;
+    --accent: #2f6feb;
+    --warn-bg: #fff4e5;
+    --warn: #d9480f;
+    --late-bg: #ffe3e3;
+    --late: #c92a2a;
+    --shadow: 0 1px 3px rgba(0,0,0,.12);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  header h1 { font-size: 18px; margin: 0 16px 0 0; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: 1; }
+  select, input, textarea, button {
+    font: inherit;
+    color: inherit;
+  }
+  .filters select, .filters input {
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+  }
+  button {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+  }
+  button:hover { background: #f3f4f6; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #1f5fd6; }
+  button.danger { color: var(--late); border-color: #f1aeb5; }
+  button.danger:hover { background: #fff0f0; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .summary {
+    padding: 8px 20px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .summary strong { color: var(--warn); }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 4px 20px 24px;
+    overflow-x: auto;
+    align-items: start;
+  }
+  .column {
+    background: var(--col);
+    border-radius: 8px;
+    padding: 8px;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    border-top: 4px solid var(--c);
+    transition: background .15s;
+  }
+  .column.drag-over { background: #dde6f7; outline: 2px dashed var(--accent); }
+  .column h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    margin: 4px 4px 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .column h2 .count {
+    background: #fff;
+    border-radius: 10px;
+    padding: 0 8px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .cards { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 60px; }
+
+  .card {
+    background: var(--panel);
+    border-radius: 6px;
+    padding: 10px;
+    box-shadow: var(--shadow);
+    cursor: grab;
+    border-left: 4px solid transparent;
+    position: relative;
+  }
+  .card:active { cursor: grabbing; }
+  .card.dragging { opacity: .4; }
+  .card h3 { font-size: 14px; margin: 0 0 6px; line-height: 1.3; word-break: break-word; }
+  .card .meta { font-size: 12px; color: var(--muted); margin: 2px 0; word-break: break-word; }
+  .card .note {
+    font-size: 12px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #eee;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 60px;
+    overflow: hidden;
+  }
+  .card.soon { border-left-color: var(--warn); background: var(--warn-bg); }
+  .card.late { border-left-color: var(--late); background: var(--late-bg); }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    color: #fff;
+  }
+  .card.soon .badge { background: var(--warn); }
+  .card.late .badge { background: var(--late); }
+  .card.soon, .card.late { animation: pulse 2s ease-in-out 2; }
+  @keyframes pulse {
+    50% { box-shadow: 0 0 0 3px rgba(217,72,15,.35); }
+  }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 16px 4px; }
+
+  /* Modal */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.4);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 20;
+    padding: 16px;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 20px;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal h2 { margin: 0 0 14px; font-size: 18px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px; }
+  .field input, .field select, .field textarea {
+    width: 100%;
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+  }
+  .field textarea { min-height: 80px; resize: vertical; }
+  .field small { color: var(--muted); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 16px; }
+  .modal-actions .right { display: flex; gap: 8px; margin-left: auto; }
+
+  @media (max-width: 700px) {
+    header { padding: 10px 12px; }
+    .board { padding: 4px 12px 20px; grid-template-columns: repeat(6, 240px); }
+    .row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📄 Makale Takip</h1>
+  <div class="filters">
+    <input type="search" id="fSearch" placeholder="Başlıkta ara…">
+    <select id="fJournal"><option value="">Tüm dergiler</option></select>
+    <select id="fAuthor"><option value="">Tüm ortak yazarlar</option></select>
+    <button id="btnClear" title="Filtreleri temizle">Temizle</button>
+  </div>
+  <div class="actions">
+    <button class="primary" id="btnAdd">+ Yeni makale</button>
+    <button id="btnExport" title="Excel'de açılabilen CSV dosyası indirir">Excel'e aktar</button>
+    <button id="btnBackup" title="Tüm veriyi yedek dosyası olarak indirir">Yedekle</button>
+    <button id="btnRestore" title="Yedek dosyasından geri yükler">Yedekten yükle</button>
+    <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<div class="summary" id="summary"></div>
+<main class="board" id="board"></main>
+
+<div class="overlay" id="overlay">
+  <form class="modal" id="form" autocomplete="off">
+    <h2 id="formTitle">Yeni makale</h2>
+    <input type="hidden" id="mId">
+    <div class="field">
+      <label for="mTitle">Başlık *</label>
+      <input id="mTitle" required>
+    </div>
+    <div class="field">
+      <label for="mJournal">Dergi</label>
+      <input id="mJournal" list="journalList">
+      <datalist id="journalList"></datalist>
+    </div>
+    <div class="field">
+      <label for="mAuthors">Ortak yazarlar</label>
+      <input id="mAuthors">
+      <small>Virgülle ayırın: Ayşe Yılmaz, Mehmet Demir</small>
+    </div>
+    <div class="field">
+      <label for="mStatus">Durum</label>
+      <select id="mStatus"></select>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="mSubmitted">Gönderim tarihi</label>
+        <input type="date" id="mSubmitted">
+      </div>
+      <div class="field">
+        <label for="mDeadline">Son tarih</label>
+        <input type="date" id="mDeadline">
+      </div>
+    </div>
+    <div class="field">
+      <label for="mNote">Not</label>
+      <textarea id="mNote"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="danger" id="btnDelete">Sil</button>
+      <div class="right">
+        <button type="button" id="btnCancel">Vazgeç</button>
+        <button type="submit" class="primary">Kaydet</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "makaleTakip.v1";
+  const STATUSES = [
+    { key: "taslak",    label: "Taslak",            color: "#868e96" },
+    { key: "gonderildi",label: "Gönderildi",        color: "#1c7ed6" },
+    { key: "hakemde",   label: "Hakemde",           color: "#7048e8" },
+    { key: "duzeltme",  label: "Düzeltme istendi",  color: "#f08c00" },
+    { key: "kabul",     label: "Kabul edildi",      color: "#2f9e44" },
+    { key: "red",       label: "Reddedildi",        color: "#e03131" }
+  ];
+  // Sonuçlanmış makalelerde son tarih uyarısı gösterilmez
+  const CLOSED = new Set(["kabul", "red"]);
+  const STATUS_LABEL = Object.fromEntries(STATUSES.map(s => [s.key, s.label]));
+
+  const $ = id => document.getElementById(id);
+  let papers = load();
+  let dragId = null;
+
+  // ---------- Saklama ----------
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const data = raw ? JSON.parse(raw) : [];
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(papers));
+    } catch (e) {
+      alert("Veriler kaydedilemedi. Tarayıcı depolaması kapalı olabilir.\nLütfen 'Yedekle' ile verilerinizi indirin.");
+    }
+  }
+
+  // ---------- Yardımcılar ----------
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  function splitAuthors(s) {
+    return (s || "").split(/[,;]/).map(a => a.trim()).filter(Boolean);
+  }
+  function fmtDate(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return `${d}.${m}.${y}`;
+  }
+  function daysUntil(iso) {
+    if (!iso) return null;
+    const [y, m, d] = iso.split("-").map(Number);
+    const target = new Date(y, m - 1, d);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((target - today) / 86400000);
+  }
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  const collator = new Intl.Collator("tr", { sensitivity: "base" });
+  function uniqueSorted(arr) {
+    const map = new Map();
+    arr.forEach(v => { const k = v.toLocaleLowerCase("tr"); if (!map.has(k)) map.set(k, v); });
+    return [...map.values()].sort(collator.compare);
+  }
+
+  // ---------- Filtreler ----------
+  function refreshFilterOptions() {
+    const journals = uniqueSorted(papers.map(p => (p.journal || "").trim()).filter(Boolean));
+    const authors = uniqueSorted(papers.flatMap(p => splitAuthors(p.authors)));
+    fillSelect($("fJournal"), "Tüm dergiler", journals);
+    fillSelect($("fAuthor"), "Tüm ortak yazarlar", authors);
+    $("journalList").innerHTML = journals.map(j => `<option value="${esc(j)}">`).join("");
+  }
+  function fillSelect(sel, placeholder, values) {
+    const current = sel.value;
+    sel.innerHTML = `<option value="">${placeholder}</option>` +
+      values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+    if (values.some(v => v === current)) sel.value = current;
+  }
+  function passesFilter(p) {
+    const j = $("fJournal").value;
+    const a = $("fAuthor").value;
+    const q = $("fSearch").value.trim().toLocaleLowerCase("tr");
+    if (j && (p.journal || "").trim().toLocaleLowerCase("tr") !== j.toLocaleLowerCase("tr")) return false;
+    if (a && !splitAuthors(p.authors).some(x => x.toLocaleLowerCase("tr") === a.toLocaleLowerCase("tr"))) return false;
+    if (q && !(p.title || "").toLocaleLowerCase("tr").includes(q)) return false;
+    return true;
+  }
+
+  // ---------- Çizim ----------
+  function render() {
+    const board = $("board");
+    board.innerHTML = "";
+    const visible = papers.filter(passesFilter);
+    let soonCount = 0, lateCount = 0;
+
+    STATUSES.forEach(st => {
+      const col = document.createElement("section");
+      col.className = "column";
+      col.style.setProperty("--c", st.color);
+      col.dataset.status = st.key;
+
+      const items = visible
+        .filter(p => p.status === st.key)
+        .sort((a, b) => {
+          // Son tarihi yakın olanlar üstte, son tarihi olmayanlar altta
+          if (a.deadline && b.deadline) return a.deadline.localeCompare(b.deadline);
+          if (a.deadline) return -1;
+          if (b.deadline) return 1;
+          return (b.updated || 0) - (a.updated || 0);
+        });
+
+      col.innerHTML = `<h2><span>${st.label}</span><span class="count">${items.length}</span></h2>`;
+      const list = document.createElement("div");
+      list.className = "cards";
+      if (!items.length) list.innerHTML = `<div class="empty">Kart yok</div>`;
+
+      items.forEach(p => {
+        const card = document.createElement("article");
+        card.className = "card";
+        card.draggable = true;
+        card.dataset.id = p.id;
+
+        let badge = "";
+        const d = daysUntil(p.deadline);
+        if (d !== null && !CLOSED.has(p.status)) {
+          if (d < 0) {
+            card.classList.add("late");
+            badge = `<span class="badge">⚠ Süresi ${-d} gün geçti</span>`;
+            lateCount++;
+          } else if (d <= 7) {
+            card.classList.add("soon");
+            badge = `<span class="badge">⏰ ${d === 0 ? "Bugün son gün" : d + " gün kaldı"}</span>`;
+            soonCount++;
+          }
+        }
+
+        card.innerHTML = `
+          ${badge}
+          <h3>${esc(p.title)}</h3>
+          ${p.journal ? `<div class="meta">📚 ${esc(p.journal)}</div>` : ""}
+          ${p.authors ? `<div class="meta">👥 ${esc(splitAuthors(p.authors).join(", "))}</div>` : ""}
+          ${p.submitted ? `<div class="meta">📤 Gönderim: ${fmtDate(p.submitted)}</div>` : ""}
+          ${p.deadline ? `<div class="meta">📅 Son tarih: ${fmtDate(p.deadline)}</div>` : ""}
+          ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
+        `;
+        card.title = "Düzenlemek için tıklayın, durumu değiştirmek için sürükleyin";
+        card.addEventListener("click", () => openForm(p.id));
+        card.addEventListener("dragstart", e => {
+          dragId = p.id;
+          card.classList.add("dragging");
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", p.id);
+        });
+        card.addEventListener("dragend", () => {
+          dragId = null;
+          card.classList.remove("dragging");
+          document.querySelectorAll(".column.drag-over").forEach(c => c.classList.remove("drag-over"));
+        });
+        list.appendChild(card);
+      });
+
+      col.appendChild(list);
+      col.addEventListener("dragover", e => {
+        if (!dragId) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        col.classList.add("drag-over");
+      });
+      col.addEventListener("dragleave", e => {
+        if (!col.contains(e.relatedTarget)) col.classList.remove("drag-over");
+      });
+      col.addEventListener("drop", e => {
+        e.preventDefault();
+        col.classList.remove("drag-over");
+        const id = e.dataTransfer.getData("text/plain") || dragId;
+        const p = papers.find(x => x.id === id);
+        if (p && p.status !== st.key) {
+          p.status = st.key;
+          p.updated = Date.now();
+          save();
+          render();
+        }
+      });
+      board.appendChild(col);
+    });
+
+    const total = papers.length;
+    let txt = `Toplam ${total} makale`;
+    if (visible.length !== total) txt += ` · ${visible.length} gösteriliyor`;
+    const warn = [];
+    if (lateCount) warn.push(`${lateCount} makalenin son tarihi geçti`);
+    if (soonCount) warn.push(`${soonCount} makalenin son tarihi 7 gün içinde`);
+    $("summary").innerHTML = esc(txt) + (warn.length ? ` · <strong>${esc(warn.join(", "))}</strong>` : "");
+  }
+
+  // ---------- Form ----------
+  $("mStatus").innerHTML = STATUSES.map(s => `<option value="${s.key}">${s.label}</option>`).join("");
+
+  function openForm(id) {
+    const p = id ? papers.find(x => x.id === id) : null;
+    $("formTitle").textContent = p ? "Makaleyi düzenle" : "Yeni makale";
+    $("mId").value = p ? p.id : "";
+    $("mTitle").value = p ? p.title : "";
+    $("mJournal").value = p ? p.journal || "" : "";
+    $("mAuthors").value = p ? p.authors || "" : "";
+    $("mStatus").value = p ? p.status : "taslak";
+    $("mSubmitted").value = p ? p.submitted || "" : "";
+    $("mDeadline").value = p ? p.deadline || "" : "";
+    $("mNote").value = p ? p.note || "" : "";
+    $("btnDelete").style.visibility = p ? "visible" : "hidden";
+    $("overlay").classList.add("open");
+    setTimeout(() => $("mTitle").focus(), 0);
+  }
+  function closeForm() {
+    $("overlay").classList.remove("open");
+  }
+
+  $("form").addEventListener("submit", e => {
+    e.preventDefault();
+    const id = $("mId").value;
+    const data = {
+      title: $("mTitle").value.trim(),
+      journal: $("mJournal").value.trim(),
+      authors: splitAuthors($("mAuthors").value).join(", "),
+      status: $("mStatus").value,
+      submitted: $("mSubmitted").value,
+      deadline: $("mDeadline").value,
+      note: $("mNote").value.trim(),
+      updated: Date.now()
+    };
+    if (!data.title) return;
+    if (id) {
+      Object.assign(papers.find(x => x.id === id), data);
+    } else {
+      papers.push({ id: uid(), created: Date.now(), ...data });
+    }
+    save();
+    closeForm();
+    refreshFilterOptions();
+    render();
+  });
+
+  $("btnDelete").addEventListener("click", () => {
+    const id = $("mId").value;
+    const p = papers.find(x => x.id === id);
+    if (!p) return;
+    if (!confirm(`"${p.title}" silinsin mi? Bu işlem geri alınamaz.`)) return;
+    papers = papers.filter(x => x.id !== id);
+    save();
+    closeForm();
+    refreshFilterOptions();
+    render();
+  });
+
+  $("btnCancel").addEventListener("click", closeForm);
+  $("overlay").addEventListener("mousedown", e => { if (e.target === $("overlay")) closeForm(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeForm(); });
+
+  $("btnAdd").addEventListener("click", () => openForm(null));
+  ["fJournal", "fAuthor"].forEach(id => $(id).addEventListener("change", render));
+  $("fSearch").addEventListener("input", render);
+  $("btnClear").addEventListener("click", () => {
+    $("fJournal").value = ""; $("fAuthor").value = ""; $("fSearch").value = "";
+    render();
+  });
+
+  // ---------- Dışa aktarma ----------
+  function download(filename, content, type) {
+    const blob = new Blob([content], { type });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+  function today() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  $("btnExport").addEventListener("click", () => {
+    if (!papers.length) { alert("Dışa aktarılacak makale yok."); return; }
+    const head = ["Başlık", "Dergi", "Ortak yazarlar", "Durum", "Gönderim tarihi", "Son tarih", "Not"];
+    const cell = v => {
+      const s = String(v ?? "");
+      return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const order = Object.fromEntries(STATUSES.map((s, i) => [s.key, i]));
+    const rows = [...papers]
+      .sort((a, b) => order[a.status] - order[b.status] || collator.compare(a.title, b.title))
+      .map(p => [p.title, p.journal, p.authors, STATUS_LABEL[p.status] || p.status,
+                 fmtDate(p.submitted), fmtDate(p.deadline), p.note]);
+    // Türkçe Excel noktalı virgülü ayırıcı olarak kullanır; BOM Türkçe karakterlerin doğru görünmesini sağlar
+    const csv = "﻿" + [head, ...rows].map(r => r.map(cell).join(";")).join("\r\n");
+    download(`makaleler-${today()}.csv`, csv, "text/csv;charset=utf-8");
+  });
+
+  $("btnBackup").addEventListener("click", () => {
+    download(`makale-takip-yedek-${today()}.json`, JSON.stringify(papers, null, 2), "application/json");
+  });
+  $("btnRestore").addEventListener("click", () => $("restoreFile").click());
+  $("restoreFile").addEventListener("change", e => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!Array.isArray(data)) throw new Error();
+        const valid = data.filter(p => p && p.title && STATUS_LABEL[p.status]).map(p => ({ id: p.id || uid(), ...p }));
+        if (!confirm(`Yedekte ${valid.length} makale bulundu. Mevcut ${papers.length} makalenin yerine geçsin mi?`)) return;
+        papers = valid;
+        save();
+        refreshFilterOptions();
+        render();
+      } catch (err) {
+        alert("Yedek dosyası okunamadı.");
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // Gün değiştiğinde son tarih uyarılarını güncelle
+  setInterval(render, 60 * 60 * 1000);
+  // Başka sekmede değişiklik olursa senkronize et
+  window.addEventListener("storage", e => {
+    if (e.key === STORAGE_KEY) { papers = load(); refreshFilterOptions(); render(); }
+  });
+
+  refreshFilterOptions();
+  render();
+})();
+</script>
+</body>
+</html>
